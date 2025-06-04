@@ -53,6 +53,7 @@ api.mount("/screenshots", StaticFiles(directory=".screenshots"), name="screensho
 
 def initialize_system():
     stealth_mode = config.getboolean('BROWSER', 'stealth_mode')
+    headless_mode = config.getboolean('BROWSER', 'headless_browser', fallback=True)
     personality_folder = "jarvis" if config.getboolean('MAIN', 'jarvis_personality') else "base"
     languages = config["MAIN"]["languages"].split(' ')
 
@@ -64,10 +65,12 @@ def initialize_system():
     )
     logger.info(f"Provider initialized: {provider.provider_name} ({provider.model})")
 
+    # Force headless mode to True
     browser = Browser(
-        create_driver(headless=config.getboolean('BROWSER', 'headless_browser'), stealth_mode=stealth_mode, lang=languages[0]),
+        create_driver(headless=True, stealth_mode=stealth_mode, lang=languages[0]),  # Force True here
         anticaptcha_manual_install=stealth_mode
     )
+    logger.info(f"Browser initialized (forced headless=True)")
     logger.info("Browser initialized")
 
     agents = [

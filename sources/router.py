@@ -185,11 +185,25 @@ Respond with ONLY the category name. Nothing else. Just one word: web, code, fil
             ("Create a function to sort a list", "code"),
             ("Fix this bug in my code", "code"),
             
-            # File tasks
+            # File tasks - EXPANDED
             ("Find all PDF files", "files"),
             ("List files in my documents", "files"),
             ("Open my downloads folder", "files"),
             ("Search for a file named report.docx", "files"),
+            ("Open explorer", "files"),
+            ("Open file explorer", "files"),
+            ("Show me what's in my desktop", "files"),
+            ("List all PDF files in my documents folder", "files"),
+            ("What files are in downloads", "files"),
+            ("Delete old files", "files"),
+            ("Move files to another folder", "files"),
+            ("Copy this file", "files"),
+            ("Rename document.txt", "files"),
+            ("Create a new folder", "files"),
+            ("Show me my recent files", "files"),
+            ("Find large files on my computer", "files"),
+            ("Open Windows Explorer", "files"),
+            ("Navigate to my documents", "files"),
             
             # Talk/Casual tasks
             ("Hello", "talk"),

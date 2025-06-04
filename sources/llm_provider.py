@@ -1,4 +1,5 @@
 import os
+os.environ.pop("SSL_CERT_FILE", None)
 import platform
 import socket
 import subprocess

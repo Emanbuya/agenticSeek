@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 
-import os, sys
+import os
+import sys
+import asyncio  # Move this up here
 import uvicorn
 import aiofiles
 import configparser
-import asyncio
 import time
+
+# Then add the Windows fix
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+# Rest of your imports...
 from typing import List
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse

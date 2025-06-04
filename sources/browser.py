@@ -189,7 +189,7 @@ def create_driver(headless=False, stealth_mode=True, crx_path="./crx/nopecha.crx
 class Browser:
     def __init__(self, driver, anticaptcha_manual_install=False):
         """Initialize the browser with optional AntiCaptcha installation."""
-        self.js_scripts_folder = "./sources/web_scripts/" if not __name__ == "__main__" else "./web_scripts/"
+        self.js_scripts_folder = os.path.join(os.path.dirname(__file__), "web_scripts")
         self.anticaptcha = "https://chrome.google.com/webstore/detail/nopecha-captcha-solver/dknlfmjaanfblgfdfebhijalfmhmjjjo/related"
         self.logger = Logger("browser.log")
         self.screenshot_folder = os.path.join(os.getcwd(), ".screenshots")

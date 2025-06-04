@@ -21,9 +21,6 @@ class searxSearch(Tools):
         self.paywall_keywords = [
             "Member-only", "access denied", "restricted content", "404", "this page is not working"
         ]
-        if not self.base_url:
-            raise ValueError("SearxNG base URL must be provided either as an argument or via the SEARXNG_BASE_URL environment variable.")
-
     def link_valid(self, link):
         """check if a link is valid."""
         # TODO find a better way

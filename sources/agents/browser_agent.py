@@ -26,7 +26,7 @@ class BrowserAgent(Agent):
         """
         super().__init__(name, prompt_path, provider, verbose, browser)
         self.tools = {
-            "web_search": searxSearch(),
+            "web_search": searxSearch(base_url="http://localhost:8080"),
         }
         self.role = "web"
         self.type = "browser_agent"

@@ -1,0 +1,6 @@
+Nina Demo Notes
+===============
+- Voice commands working
+- File opening tested
+- Folder navigation OK
+- Schedule integration complete

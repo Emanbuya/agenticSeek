@@ -1,4 +1,6 @@
 import readline
+import time
+import hashlib
 from typing import List, Tuple, Type, Dict
 
 from sources.text_to_speech import Speech
@@ -34,12 +36,20 @@ class Interaction:
         self.recorder = None
         self.is_generating = False
         self.languages = langs
+        
+        # Add deduplication tracking
+        self.recent_queries = {}  # Store query hash -> (response, timestamp)
+        self.dedup_window = 3.0  # seconds
+        
         if tts_enabled:
             self.initialize_tts()
         if stt_enabled:
             self.initialize_stt()
         if recover_last_session:
             self.load_last_session()
+            
+        # Add Nina voice enhancement after TTS initialization
+            
         self.emit_status()
     
     def get_spoken_language(self) -> str:
@@ -146,11 +156,42 @@ class Interaction:
         self.is_active = True
         self.last_query = query
     
+    def get_query_hash(self, query: str) -> str:
+        """Get a hash of the query for deduplication"""
+        return hashlib.md5(query.encode()).hexdigest()
+    
+    def is_duplicate_query(self, query: str) -> Tuple[bool, str, str]:
+        """Check if this query was recently processed"""
+        query_hash = self.get_query_hash(query)
+        current_time = time.time()
+        
+        # Clean old entries
+        self.recent_queries = {
+            k: v for k, v in self.recent_queries.items() 
+            if current_time - v[2] < self.dedup_window
+        }
+        
+        # Check if duplicate
+        if query_hash in self.recent_queries:
+            answer, reasoning, timestamp = self.recent_queries[query_hash]
+            if current_time - timestamp < self.dedup_window:
+                return True, answer, reasoning
+        
+        return False, None, None
+    
     async def think(self) -> bool:
         """Request AI agents to process the user input."""
         push_last_agent_memory = False
         if self.last_query is None or len(self.last_query) == 0:
             return False
+        
+        # Check for duplicate query
+        is_dup, cached_answer, cached_reasoning = self.is_duplicate_query(self.last_query)
+        if is_dup:
+            self.last_answer = cached_answer
+            self.last_reasoning = cached_reasoning
+            return True
+        
         agent = self.router.select_agent(self.last_query)
         if agent is None:
             return False
@@ -161,6 +202,11 @@ class Interaction:
         self.is_generating = True
         self.last_answer, self.last_reasoning = await agent.process(self.last_query, self.speech)
         self.is_generating = False
+        
+        # Store in cache
+        query_hash = self.get_query_hash(self.last_query)
+        self.recent_queries[query_hash] = (self.last_answer, self.last_reasoning, time.time())
+        
         if push_last_agent_memory:
             self.current_agent.memory.push('user', self.last_query)
             self.current_agent.memory.push('assistant', self.last_answer)
@@ -196,4 +242,3 @@ class Interaction:
             return
         if self.current_agent is not None:
             self.current_agent.show_answer()
-

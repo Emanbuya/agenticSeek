@@ -2,189 +2,300 @@ import os, sys
 import stat
 import mimetypes
 import configparser
+from pathlib import Path
+from typing import List, Dict, Optional
 
-if __name__ == "__main__": # if running as a script for individual testing
+if __name__ == "__main__":
     sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sources.tools.tools import Tools
 
 class FileFinder(Tools):
     """
-    A tool that finds files in the current directory and returns their information.
+    Enhanced File Finder for Nina - understands natural language paths
     """
     def __init__(self):
         super().__init__()
         self.tag = "file_finder"
         self.name = "File Finder"
-        self.description = "Finds files in the current directory and returns their information."
+        self.description = "Finds files across common directories with natural language support"
+        
+        # Set up natural language directory mappings
+        self.setup_directory_aliases()
+    
+    def setup_directory_aliases(self):
+        """Set up common directory aliases for natural language understanding"""
+        home = str(Path.home())
+        
+        self.directory_aliases = {
+            "my documents": str(Path(home) / "Documents"),
+            "documents": str(Path(home) / "Documents"),
+            "downloads": str(Path(home) / "Downloads"),
+            "desktop": str(Path(home) / "Desktop"),
+            "pictures": str(Path(home) / "Pictures"),
+            "videos": str(Path(home) / "Videos"),
+            "music": str(Path(home) / "Music"),
+            "home": home,
+            "workspace": self.work_dir,
+            "nina_workspace": self.work_dir,
+            "current": os.getcwd(),
+        }
+        
+        # Add Windows-specific paths
+        if os.name == 'nt':
+            self.directory_aliases.update({
+                "program files": "C:\\Program Files",
+                "program files x86": "C:\\Program Files (x86)",
+                "appdata": str(Path(home) / "AppData"),
+                "temp": str(Path(home) / "AppData" / "Local" / "Temp"),
+                "c drive": "C:\\",
+                "c:": "C:\\",
+            })
+    
+    def resolve_directory(self, user_input: str) -> str:
+        """Resolve natural language directory references to actual paths"""
+        if not user_input:
+            return self.work_dir
+            
+        input_lower = user_input.lower().strip()
+        
+        # Check for exact alias matches
+        for alias, path in self.directory_aliases.items():
+            if alias in input_lower:
+                return path
+        
+        # Check if it's already a valid path
+        if os.path.exists(user_input):
+            return user_input
+            
+        # Default to workspace
+        return self.work_dir
     
     def read_file(self, file_path: str) -> str:
-        """
-        Reads the content of a file.
-        Args:
-            file_path (str): The path to the file to read
-        Returns:
-            str: The content of the file
-        """
+        """Reads the content of a file."""
         try:
-            with open(file_path, 'r') as file:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
                 return file.read()
         except Exception as e:
             return f"Error reading file: {e}"
-        
+    
     def read_arbitrary_file(self, file_path: str, file_type: str) -> str:
-        """
-        Reads the content of a file with arbitrary encoding.
-        Args:
-            file_path (str): The path to the file to read
-        Returns:
-            str: The content of the file in markdown format
-        """
+        """Reads the content of a file with appropriate handling for different types."""
         mime_type, _ = mimetypes.guess_type(file_path)
         if mime_type:
             if mime_type.startswith(('image/', 'video/', 'audio/')):
                 return "can't read file type: image, video, or audio files are not supported."
-        content_raw = self.read_file(file_path)
-        if "text" in file_type:
-            content = content_raw
-        elif "pdf" in file_type:
-            from pypdf import PdfReader
-            reader = PdfReader(file_path)
-            content = '\n'.join([pt.extract_text() for pt in reader.pages])
-        elif "binary" in file_type:
-            content = content_raw.decode('utf-8', errors='replace')
+        
+        if "text" in str(file_type):
+            content = self.read_file(file_path)
+        elif "pdf" in str(file_type).lower():
+            try:
+                from pypdf import PdfReader
+                reader = PdfReader(file_path)
+                content = '\n'.join([page.extract_text() for page in reader.pages])
+            except:
+                content = "Error: Could not read PDF file"
         else:
-            content = content_raw
+            content = self.read_file(file_path)
+        
         return content
     
-    def get_file_info(self, file_path: str) -> str:
-        """
-        Gets information about a file, including its name, path, type, content, and permissions.
-        Args:
-            file_path (str): The path to the file
-        Returns:
-            str: A dictionary containing the file information
-        """
+    def get_file_info(self, file_path: str) -> Dict:
+        """Gets detailed information about a file."""
         if os.path.exists(file_path):
             stats = os.stat(file_path)
             permissions = oct(stat.S_IMODE(stats.st_mode))
             file_type, _ = mimetypes.guess_type(file_path)
             file_type = file_type if file_type else "Unknown"
-            content = self.read_arbitrary_file(file_path, file_type)
+            
+            # Get file size in human readable format
+            size = stats.st_size
+            for unit in ['B', 'KB', 'MB', 'GB']:
+                if size < 1024.0:
+                    size_str = f"{size:.1f} {unit}"
+                    break
+                size /= 1024.0
+            else:
+                size_str = f"{size:.1f} TB"
             
             result = {
                 "filename": os.path.basename(file_path),
                 "path": file_path,
                 "type": file_type,
-                "read": content,
+                "size": size_str,
                 "permissions": permissions
             }
             return result
         else:
             return {"filename": file_path, "error": "File not found"}
     
-    def recursive_search(self, directory_path: str, filename: str) -> str | None:
+    def search_files(self, directory: str, pattern: str = "*", file_type: str = None, 
+                    max_results: int = 50) -> List[str]:
         """
-        Recursively searches for files in a directory and its subdirectories.
+        Search for files matching pattern in directory
         Args:
-            directory_path (str): The directory to search in
-            filename (str): The filename to search for
-        Returns:
-            str | None: The path to the file if found, None otherwise
+            directory: Directory to search in
+            pattern: File pattern to match (e.g., "*.pdf", "report*")
+            file_type: Optional file type filter
+            max_results: Maximum number of results to return
         """
-        file_path = None
-        excluded_files = [".pyc", ".o", ".so", ".a", ".lib", ".dll", ".dylib", ".so", ".git"]
-        for root, dirs, files in os.walk(directory_path):
-            for f in files:
-                if f is None:
-                    continue
-                if any(excluded_file in f for excluded_file in excluded_files):
-                    continue
-                if filename.strip() in f.strip():
-                    file_path = os.path.join(root, f)
-                    return file_path
-        return None
+        results = []
+        excluded = ['.git', '__pycache__', 'node_modules', '.vs', '.idea']
         
-
-    def execute(self, blocks: list, safety:bool = False) -> str:
+        try:
+            for root, dirs, files in os.walk(directory):
+                # Skip excluded directories
+                dirs[:] = [d for d in dirs if d not in excluded]
+                
+                for file in files:
+                    if len(results) >= max_results:
+                        return results
+                    
+                    # Check pattern match
+                    if pattern == "*" or pattern in file.lower():
+                        if file_type:
+                            if file.lower().endswith(f".{file_type.lower()}"):
+                                results.append(os.path.join(root, file))
+                        else:
+                            results.append(os.path.join(root, file))
+        except PermissionError:
+            pass  # Skip directories we can't access
+        
+        return results
+    
+    def list_directory(self, directory: str) -> Dict[str, List[str]]:
+        """List contents of a directory"""
+        try:
+            items = os.listdir(directory)
+            dirs = [d for d in items if os.path.isdir(os.path.join(directory, d))]
+            files = [f for f in items if os.path.isfile(os.path.join(directory, f))]
+            
+            return {
+                "directories": sorted(dirs),
+                "files": sorted(files),
+                "total": len(items)
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def execute(self, blocks: list, safety: bool = False) -> str:
         """
-        Executes the file finding operation for given filenames.
-        Args:
-            blocks (list): List of filenames to search for
-        Returns:
-            str: Results of the file search
+        Execute file operations based on natural language commands
         """
         if not blocks or not isinstance(blocks, list):
-            return "Error: No valid filenames provided"
-
+            return "Error: No valid commands provided"
+        
         output = ""
+        
         for block in blocks:
-            filename = self.get_parameter_value(block, "name")
-            action = self.get_parameter_value(block, "action")
-            if filename is None:
-                output = "Error: No filename provided\n"
-                return output
-            if action is None:
-                action = "info"
-            print("File finder: recursive search started...")
-            file_path = self.recursive_search(self.work_dir, filename)
-            if file_path is None:
-                output = f"File: {filename} - not found\n"
-                continue
-            result = self.get_file_info(file_path)
-            if "error" in result:
-                output += f"File: {result['filename']} - {result['error']}\n"
-            else:
-                if action == "read":
-                    output += "Content:\n" + result['read'] + "\n"
+            # Extract parameters
+            action = self.get_parameter_value(block, "action") or "search"
+            name = self.get_parameter_value(block, "name") or "*"
+            directory = self.get_parameter_value(block, "directory") or ""
+            file_type = self.get_parameter_value(block, "type")
+            
+            # Resolve natural language directory
+            search_dir = self.resolve_directory(directory)
+            
+            if action == "list":
+                # List directory contents
+                result = self.list_directory(search_dir)
+                if "error" in result:
+                    output += f"Error listing {search_dir}: {result['error']}\n"
                 else:
-                    output += (f"File: {result['filename']}, "
-                              f"found at {result['path']}, "
-                              f"File type {result['type']}\n")
+                    output += f"Contents of {os.path.basename(search_dir)}:\n"
+                    output += f"  Folders: {len(result['directories'])}\n"
+                    output += f"  Files: {len(result['files'])}\n"
+                    if result['files']:
+                        output += f"  First 10 files: {', '.join(result['files'][:10])}\n"
+            
+            elif action == "search" or action == "find":
+                # Search for files
+                if file_type:
+                    name = f"*.{file_type}"
+                
+                files = self.search_files(search_dir, name, file_type)
+                
+                if files:
+                    output += f"Found {len(files)} matching files:\n"
+                    for file in files[:10]:  # Show first 10
+                        output += f"  - {os.path.basename(file)} ({os.path.dirname(file)})\n"
+                    if len(files) > 10:
+                        output += f"  ... and {len(files) - 10} more\n"
+                else:
+                    output += f"No files found matching '{name}' in {os.path.basename(search_dir)}\n"
+            
+            elif action == "info":
+                # Get file info
+                file_path = self.search_files(search_dir, name, file_type, max_results=1)
+                if file_path:
+                    info = self.get_file_info(file_path[0])
+                    output += f"File: {info['filename']}\n"
+                    output += f"  Path: {info['path']}\n"
+                    output += f"  Type: {info['type']}\n"
+                    output += f"  Size: {info['size']}\n"
+                else:
+                    output += f"File '{name}' not found\n"
+            
+            elif action == "read":
+                # Read file content
+                file_path = self.search_files(search_dir, name, file_type, max_results=1)
+                if file_path:
+                    content = self.read_arbitrary_file(file_path[0], file_type or "text")
+                    output += f"Content of {os.path.basename(file_path[0])}:\n{content[:500]}...\n"
+                else:
+                    output += f"File '{name}' not found\n"
+        
         return output.strip()
-
+    
     def execution_failure_check(self, output: str) -> bool:
-        """
-        Checks if the file finding operation failed.
-        Args:
-            output (str): The output string from execute()
-        Returns:
-            bool: True if execution failed, False if successful
-        """
+        """Check if the operation failed"""
         if not output:
             return True
-        if "Error" in output or "not found" in output:
-            return True
-        return False
-
+        failure_indicators = ["Error", "not found", "Failed"]
+        return any(indicator in output for indicator in failure_indicators)
+    
     def interpreter_feedback(self, output: str) -> str:
-        """
-        Provides feedback about the file finding operation.
-        Args:
-            output (str): The output string from execute()
-        Returns:
-            str: Feedback message for the AI
-        """
+        """Provide feedback about the operation"""
         if not output:
-            return "No output generated from file finder tool"
+            return "No output generated"
         
-        feedback = "File Finder Results:\n"
-        
-        if "Error" in output or "not found" in output:
-            feedback += f"Failed to process: {output}\n"
+        if self.execution_failure_check(output):
+            return f"Operation encountered issues: {output}"
         else:
-            feedback += f"Successfully found: {output}\n"
-        return feedback.strip()
+            return f"Operation successful: {output}"
+
+
+# Quick utility functions for common operations
+def find_pdfs_in_documents():
+    """Quick function to find PDFs in Documents folder"""
+    finder = FileFinder()
+    docs_path = finder.directory_aliases.get("documents", "")
+    return finder.search_files(docs_path, "*", "pdf")
+
+def open_explorer(path=None):
+    """Open Windows Explorer at specified path"""
+    import subprocess
+    if path:
+        subprocess.Popen(f'explorer "{path}"')
+    else:
+        subprocess.Popen('explorer')
+
 
 if __name__ == "__main__":
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    # Test the enhanced file finder
     tool = FileFinder()
+    
+    # Test natural language directory resolution
+    print("Testing directory aliases:")
+    print(f"'my documents' resolves to: {tool.resolve_directory('my documents')}")
+    print(f"'downloads' resolves to: {tool.resolve_directory('downloads')}")
+    
+    # Test file search
     result = tool.execute(["""
-action=read
-name=tools.py
+action=search
+directory=my documents
+type=pdf
 """], False)
-    print("Execution result:")
+    print("\nSearch result:")
     print(result)
-    print("\nFailure check:", tool.execution_failure_check(result))
-    print("\nFeedback:")
-    print(tool.interpreter_feedback(result))
